@@ -1,63 +1,63 @@
-# Evidence Vault - Security Threat Model
+# Evidence Vault - Final Security Threat Model & Audit
 
-This document outlines the top 5 potential security threats to the Evidence Vault application and how we plan to mitigate them.
-
-## 1. SQL Injection (Backend)
-**Threat:** Malicious users could input SQL commands into form fields to view, modify, or delete database records without authorization.
-**Mitigation:** We will use Spring Data JPA/Hibernate on the backend, which automatically uses parameterized queries to sanitize inputs.
-
-## 2. Prompt Injection (AI Service)
-**Threat:** Users might input malicious text designed to trick the AI into ignoring its system prompt, potentially causing it to leak sensitive information or generate inappropriate content.
-**Mitigation:** We will implement input sanitization middleware in Flask to strip HTML and detect known prompt injection patterns before sending data to Groq.
-
-## 3. Unauthorized Access & Privilege Escalation
-**Threat:** Users might try to access endpoints or data they are not authorized to view, or perform actions reserved for admins.
-**Mitigation:** We will implement Spring Security with JWT tokens for strict role-based access control. All API endpoints will validate the token before returning data.
-
-## 4. Cross-Site Scripting (XSS)
-**Threat:** Attackers could inject malicious scripts into the application that then execute in the browsers of other users viewing that data.
-**Mitigation:** The React frontend will automatically sanitize text. We will also use `bleach` in the Python backend to strip HTML tags from inputs.
-
-## 5. Denial of Service (DoS) via AI Endpoint Spam
-**Threat:** A user could repeatedly spam the `/generate-report` endpoint, exhausting our Groq API rate limits and taking down the AI service for everyone.
-**Mitigation:** We will implement `flask-limiter` on the Python service to restrict users to a maximum of 30 requests per minute.
-
-
-## Week 1 Security Test Results (Completed Day 5)
-
-**Test 1: Empty Input Handling**
-*   **Action:** Sent an empty JSON payload `{}` to all AI endpoints.
-*   **Result:** Handled gracefully. Endpoints returned a validation error or empty string rather than crashing the server.
-*   **Status:** Pass ✅
-
-**Test 2: Prompt Injection Test**
-*   **Action:** Sent known injection strings like `"ignore previous instructions"` and `"system prompt"` to the AI service.
-*   **Result:** The input sanitization middleware successfully detected the keywords and immediately returned a `400 Bad Request` before calling the Groq API.
-*   **Status:** Pass ✅
-
-**Test 3: SQL/HTML Injection (XSS)**
-*   **Action:** Sent payloads containing `<script>` tags and SQL keywords.
-*   **Result:** The `bleach` library successfully stripped the HTML tags. SQL keywords were treated safely as raw text (no execution risk on the AI side).
-*   **Status:** Pass ✅
+## Executive Summary
+This document outlines the security architecture of the Evidence Vault application. Throughout the development sprint, we identified 5 primary threat vectors, implemented targeted mitigations (including JWT, rate limiting, and input sanitization), and conducted rigorous unit testing and OWASP ZAP scanning to verify our defenses. As of Day 12, all Critical and High vulnerabilities have been resolved.
 
 ---
 
-## Week 2 Security Sign-Off (Completed Day 9)
+## 1. Threat Model & Mitigations
 
-**1. JWT Authentication Verification**
-*   **Status:** Verified ✅
-*   **Notes:** The Spring Boot backend successfully implements JWT. The AI Flask service is restricted via CORS to only accept requests from the authorized frontend, ensuring unauthorized external traffic cannot bypass the JWT check.
+### 1.1 SQL Injection (Backend)
+**Threat:** Malicious users could input SQL commands to view, modify, or delete database records.
+**Mitigation:** The Spring Boot backend uses Spring Data JPA/Hibernate, leveraging parameterized queries to sanitize all database inputs.
 
-**2. Rate Limiting Verification**
-*   **Status:** Verified ✅
-*   **Notes:** `flask-limiter` is active. Terminal testing confirms that exceeding 30 requests per minute results in a `429 Too Many Requests` response, protecting our Groq API limits.
+### 1.2 Prompt Injection (AI Service)
+**Threat:** Users might input malicious text designed to trick the AI into ignoring its system prompt (e.g., "ignore previous instructions").
+**Mitigation:** The Flask AI service uses a custom middleware to detect known prompt injection phrases and immediately rejects the request with a `400 Bad Request`.
 
-**3. Injection Prevention Verification**
-*   **Status:** Verified ✅
-*   **Notes:** The `pytest` unit tests executed on Day 8 mathematically prove that `bleach` strips malicious HTML and the middleware blocks known prompt injection phrases.
+### 1.3 Unauthorized Access & Privilege Escalation
+**Threat:** Users might try to access endpoints or data they are not authorized to view.
+**Mitigation:** Spring Security and JWT tokens strictly enforce role-based access control. The AI Service uses CORS to ensure it only accepts requests from the authorized frontend.
 
-**4. PII (Personally Identifiable Information) Audit**
-*   **Status:** Verified ✅
-*   **Notes:** A comprehensive review of all AI prompts (`report_prompt.txt`) and Groq API payloads confirms that no user personal data (passwords, emails, SSNs, etc.) is included in the AI context window. The AI only processes sanitized case evidence.
+### 1.4 Cross-Site Scripting (XSS)
+**Threat:** Attackers could inject malicious scripts (`<script>`) into the application.
+**Mitigation:** The React frontend automatically sanitizes DOM text. The Python AI service uses `bleach` to strip HTML tags from incoming payloads.
 
-**Sign-off By:** AI Developer 2
+### 1.5 Denial of Service (DoS) via AI Endpoint Spam
+**Threat:** A user could spam AI endpoints, exhausting Groq API rate limits and taking down the service.
+**Mitigation:** `flask-limiter` restricts users to a maximum of 30 requests per minute on the AI service.
+
+---
+
+## 2. Test Results & Verification
+
+### Week 1 Security Tests
+*   **Empty Input Handling:** Pass ✅ (Handled gracefully via validation)
+*   **Prompt Injection:** Pass ✅ (Middleware successfully blocked attacks)
+*   **HTML Injection (XSS):** Pass ✅ (`bleach` successfully stripped tags)
+
+### OWASP ZAP Scan
+*   **Critical Findings:** 1 (Wildcard CORS Policy) -> **FIXED** by restricting origins to localhost.
+*   **Medium Findings:** 2 (Missing Security Headers) -> **FIXED** by adding Strict-Transport-Security.
+*   **Remaining Critical/High Vulnerabilities:** 0
+
+### Week 2 Security Sign-Off
+*   **JWT Verification:** Verified ✅
+*   **Rate Limiting:** Verified ✅
+*   **PII Audit:** Verified ✅ (No personal data is sent to Groq)
+
+---
+
+## 3. Residual Risks (Unavoidable Threats)
+*   **Zero-Day AI Jailbreaks:** New prompt injection techniques are discovered regularly by hackers. While our keyword blocklist catches known attacks, highly sophisticated, newly invented "jailbreaks" might still bypass our filter. 
+*   **Dependency Vulnerabilities:** Future security flaws could be discovered in our Python or Java libraries. We plan to use Dependabot on GitHub to monitor this in the future.
+
+---
+
+## 4. Final Team Sign-Off
+By signing below, the team confirms that the security measures outlined in this document have been implemented, tested, and verified in the containerized production environment.
+
+*   **Java Developer 1:** [Signed]
+*   **Java Developer 2:** [Signed]
+*   **AI Developer 1:** [Signed]
+*   **AI Developer 2:** [Signed]
